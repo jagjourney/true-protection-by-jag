@@ -1,0 +1,50 @@
+name: Bug Report
+description: Report a bug in True Protection
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: True Protection Version
+      placeholder: "e.g. 1.0.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows 10
+        - Windows 11
+        - macOS (Intel)
+        - macOS (Apple Silicon)
+        - Ubuntu/Debian
+        - Fedora/RHEL
+        - Arch Linux
+        - Other Linux
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Paste output from `tpj logs --export` if applicable
+      render: shell

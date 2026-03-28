@@ -1,0 +1,27 @@
+name: Feature Request
+description: Suggest a feature for True Protection
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem would this feature solve?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How should this work?
+    validations:
+      required: true
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Which tier should this be in?
+      options:
+        - Free (core protection)
+        - Advanced Jag Tools (paid)
+        - Both
+        - Not sure

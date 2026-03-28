@@ -1,0 +1,67 @@
+True Protection by Jag - Proprietary Software License
+Copyright (C) 2026 Jag Journey, LLC. All rights reserved.
+
+TERMS OF USE
+
+1. GRANT OF LICENSE
+   Jag Journey, LLC ("Licensor") grants you a non-exclusive, non-transferable,
+   revocable license to use the True Protection by Jag software ("Software")
+   free of charge for personal and commercial use.
+
+2. RESTRICTIONS
+   You may NOT:
+   a) Reverse engineer, decompile, disassemble, or attempt to derive the source
+      code of the Software.
+   b) Modify, adapt, translate, or create derivative works based on the Software.
+   c) Redistribute, sublicense, rent, lease, or lend the Software or any portion
+      thereof without prior written consent from the Licensor.
+   d) Remove, alter, or obscure any proprietary notices, labels, or marks on
+      the Software.
+   e) Use the Software to develop a competing product or service.
+
+3. INTELLECTUAL PROPERTY
+   The Software, including all source code, object code, documentation, and
+   associated materials, is the exclusive property of Jag Journey, LLC and is
+   protected by copyright and trade secret laws. No title or ownership of the
+   Software is transferred to you.
+
+4. FREE USE
+   The core protection features of the Software are provided free of charge.
+   Advanced features ("Advanced Jag Tools") powered by JagAI require an active
+   paid subscription. Subscription terms are available at https://tpjsecurity.com.
+
+5. COMMUNITY CONTRIBUTIONS
+   Community-contributed YARA detection rules submitted through the official
+   community repository are licensed under the MIT License and may be freely
+   used, modified, and distributed.
+
+6. BROWSER EXTENSION
+   The True Protection Browser Extension is licensed under the MIT License
+   and its source code is publicly available.
+
+7. TELEMETRY AND DATA
+   The Software may collect anonymized telemetry data to improve threat
+   detection. No personally identifiable information is collected without
+   explicit consent. See our Privacy Policy at https://tpjsecurity.com/privacy.
+
+8. DISCLAIMER OF WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS
+   FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+9. LIMITATION OF LIABILITY
+   IN NO EVENT SHALL JAG JOURNEY, LLC BE LIABLE FOR ANY INDIRECT, INCIDENTAL,
+   SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES ARISING FROM YOUR USE OF THE
+   SOFTWARE.
+
+10. TERMINATION
+    This license is effective until terminated. It terminates automatically if
+    you violate any of its terms. Upon termination, you must destroy all copies
+    of the Software in your possession.
+
+11. GOVERNING LAW
+    This license shall be governed by the laws of the State of Texas, United
+    States of America.
+
+For licensing inquiries: legal@jagjourney.com
+Website: https://tpjsecurity.com
