@@ -1,0 +1,341 @@
+/**
+ * True Protection by Jag - Popup Logic
+ * Handles popup UI state, user interactions, account login/logout,
+ * license tier gating, and communication with the background service worker.
+ *
+ * Copyright (c) Jag Journey, LLC. All rights reserved.
+ */
+
+document.addEventListener("DOMContentLoaded", async () => {
+  // ---- Element References -------------------------------------------------
+
+  const statusBanner = document.getElementById("status-banner");
+  const statusLabel = document.getElementById("status-label");
+  const statusDetail = document.getElementById("status-detail");
+  const iconSafe = document.getElementById("icon-safe");
+  const iconWarning = document.getElementById("icon-warning");
+  const iconBlocked = document.getElementById("icon-blocked");
+  const iconDisabled = document.getElementById("icon-disabled");
+  const threatDetails = document.getElementById("threat-details");
+  const threatList = document.getElementById("threat-list");
+  const daemonDot = document.getElementById("daemon-dot");
+
+  const statScanned = document.getElementById("stat-scanned");
+  const statBlocked = document.getElementById("stat-blocked");
+  const statPhishing = document.getElementById("stat-phishing");
+
+  const protectionToggle = document.getElementById("protection-toggle");
+  const levelBadge = document.getElementById("level-badge");
+
+  const btnReport = document.getElementById("btn-report");
+  const btnDashboard = document.getElementById("btn-dashboard");
+  const btnOptions = document.getElementById("btn-options");
+
+  // Account elements
+  const accountLoggedOut = document.getElementById("account-logged-out");
+  const accountLoggedIn = document.getElementById("account-logged-in");
+  const loginForm = document.getElementById("login-form");
+  const loginEmail = document.getElementById("login-email");
+  const loginPassword = document.getElementById("login-password");
+  const loginError = document.getElementById("login-error");
+  const btnLogin = document.getElementById("btn-login");
+  const btnLogout = document.getElementById("btn-logout");
+  const accountEmail = document.getElementById("account-email");
+  const accountTier = document.getElementById("account-tier");
+  const proSection = document.getElementById("pro-section");
+
+  // ---- Fetch Status -------------------------------------------------------
+
+  let currentTabId = null;
+  let currentTabUrl = "";
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab) {
+      currentTabId = tab.id;
+      currentTabUrl = tab.url || "";
+    }
+  } catch (err) {
+    console.error("[TrueProtect Popup] Failed to get current tab:", err);
+  }
+
+  async function fetchStatus() {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "GET_STATUS",
+        tabId: currentTabId,
+      });
+
+      if (!response) return;
+
+      updateProtectionState(response.protectionEnabled);
+      updateDaemonStatus(response.daemonConnected);
+      updateStats(response.stats);
+      updateProtectionLevel(response.protectionLevel);
+      updatePageStatus(response);
+    } catch (err) {
+      console.error("[TrueProtect Popup] Failed to fetch status:", err);
+      setStatus("disabled", "Error", "Could not connect to extension");
+    }
+  }
+
+  // ---- Account UI ---------------------------------------------------------
+
+  async function checkAccountStatus() {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: "ACCOUNT_STATUS" });
+      if (response && response.loggedIn) {
+        showLoggedInState(response.user, response.license_tier);
+      } else {
+        showLoggedOutState();
+      }
+    } catch {
+      showLoggedOutState();
+    }
+  }
+
+  function showLoggedInState(user, tier) {
+    accountLoggedOut.classList.add("hidden");
+    accountLoggedIn.classList.remove("hidden");
+    accountEmail.textContent = user?.email || user?.name || "Account";
+    const tierLabel = tier === "pro" ? "Pro" : "Free";
+    accountTier.textContent = tierLabel;
+    accountTier.className = "account-tier tier-" + (tier || "free");
+
+    // Show or hide JagAI Pro section
+    if (tier === "pro") {
+      proSection.classList.remove("hidden");
+    } else {
+      proSection.classList.add("hidden");
+    }
+  }
+
+  function showLoggedOutState() {
+    accountLoggedOut.classList.remove("hidden");
+    accountLoggedIn.classList.add("hidden");
+    proSection.classList.add("hidden");
+  }
+
+  loginForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    loginError.classList.add("hidden");
+    btnLogin.disabled = true;
+    btnLogin.textContent = "...";
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "ACCOUNT_LOGIN",
+        email: loginEmail.value.trim(),
+        password: loginPassword.value,
+      });
+
+      if (response && response.success) {
+        loginEmail.value = "";
+        loginPassword.value = "";
+        showLoggedInState(response.user, response.license_tier);
+      } else {
+        loginError.textContent = response?.error || "Login failed";
+        loginError.classList.remove("hidden");
+      }
+    } catch (err) {
+      loginError.textContent = "Could not connect to server";
+      loginError.classList.remove("hidden");
+    }
+
+    btnLogin.disabled = false;
+    btnLogin.textContent = "Log In";
+  });
+
+  btnLogout.addEventListener("click", async () => {
+    try {
+      await chrome.runtime.sendMessage({ type: "ACCOUNT_LOGOUT" });
+    } catch {}
+    showLoggedOutState();
+  });
+
+  // ---- UI Update Functions ------------------------------------------------
+
+  function updateProtectionState(enabled) {
+    protectionToggle.checked = enabled;
+  }
+
+  function updateDaemonStatus(connected) {
+    daemonDot.className = "status-dot " + (connected ? "connected" : "disconnected");
+    daemonDot.title = connected ? "Daemon connected" : "Daemon not connected";
+  }
+
+  function updateStats(stats) {
+    if (!stats) return;
+    statScanned.textContent = formatNumber(stats.pagesScanned || 0);
+    statBlocked.textContent = formatNumber(stats.threatsBlocked || 0);
+    statPhishing.textContent = formatNumber(stats.phishingDetected || 0);
+  }
+
+  function updateProtectionLevel(level) {
+    const labels = {
+      strict: "Strict",
+      balanced: "Balanced",
+      minimal: "Minimal",
+    };
+    levelBadge.textContent = labels[level] || "Balanced";
+    levelBadge.className = "level-badge " + (level || "balanced");
+  }
+
+  function updatePageStatus(response) {
+    if (!response.protectionEnabled) {
+      setStatus("disabled", "Protection Disabled", "Click toggle to re-enable");
+      return;
+    }
+
+    // Check if current tab is a browser internal page
+    if (
+      currentTabUrl.startsWith("chrome://") ||
+      currentTabUrl.startsWith("chrome-extension://") ||
+      currentTabUrl.startsWith("about:") ||
+      currentTabUrl.startsWith("edge://") ||
+      currentTabUrl.startsWith("brave://") ||
+      currentTabUrl.startsWith("moz-extension://")
+    ) {
+      setStatus("safe", "Browser Page", "Internal pages are not scanned");
+      return;
+    }
+
+    const tabData = response.currentTab;
+    if (!tabData || !tabData.threats || tabData.threats.length === 0) {
+      setStatus("safe", "Page is Safe", "No threats detected on this page");
+      return;
+    }
+
+    const hasHighSeverity = tabData.threats.some((t) => t.severity === "high");
+    if (hasHighSeverity) {
+      setStatus(
+        "blocked",
+        "Threats Detected",
+        `${tabData.threats.length} threat(s) found`
+      );
+    } else {
+      setStatus(
+        "warning",
+        "Warnings",
+        `${tabData.threats.length} suspicious item(s) found`
+      );
+    }
+
+    showThreats(tabData.threats);
+  }
+
+  function setStatus(type, label, detail) {
+    // Reset all icons
+    iconSafe.classList.add("hidden");
+    iconWarning.classList.add("hidden");
+    iconBlocked.classList.add("hidden");
+    iconDisabled.classList.add("hidden");
+
+    // Reset banner classes
+    statusBanner.className = "status-banner " + type;
+
+    switch (type) {
+      case "safe":
+        iconSafe.classList.remove("hidden");
+        break;
+      case "warning":
+        iconWarning.classList.remove("hidden");
+        break;
+      case "blocked":
+        iconBlocked.classList.remove("hidden");
+        break;
+      case "disabled":
+        iconDisabled.classList.remove("hidden");
+        break;
+    }
+
+    statusLabel.textContent = label;
+    statusDetail.textContent = detail || "";
+  }
+
+  function showThreats(threats) {
+    if (!threats || threats.length === 0) {
+      threatDetails.classList.add("hidden");
+      return;
+    }
+
+    threatDetails.classList.remove("hidden");
+    threatList.innerHTML = "";
+
+    threats.forEach((threat) => {
+      const li = document.createElement("li");
+      li.className = threat.severity === "high" ? "" : "medium";
+      li.textContent = threat.message;
+      threatList.appendChild(li);
+    });
+  }
+
+  // ---- Event Handlers -----------------------------------------------------
+
+  protectionToggle.addEventListener("change", async () => {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: "TOGGLE_PROTECTION" });
+      if (response) {
+        updateProtectionState(response.protectionEnabled);
+        // Re-fetch full status to update UI
+        await fetchStatus();
+      }
+    } catch (err) {
+      console.error("[TrueProtect Popup] Toggle failed:", err);
+    }
+  });
+
+  btnReport.addEventListener("click", async () => {
+    if (!currentTabUrl) return;
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "REPORT_FALSE_POSITIVE",
+        url: currentTabUrl,
+        reason: "User reported via popup",
+      });
+
+      if (response && response.success) {
+        btnReport.textContent = "Reported!";
+        btnReport.disabled = true;
+        setTimeout(() => {
+          btnReport.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+              <line x1="4" y1="22" x2="4" y2="15"/>
+            </svg>
+            Report False Positive
+          `;
+          btnReport.disabled = false;
+        }, 2000);
+      }
+    } catch (err) {
+      console.error("[TrueProtect Popup] Report failed:", err);
+    }
+  });
+
+  btnDashboard.addEventListener("click", () => {
+    chrome.tabs.create({ url: "https://tpjsecurity.com/dashboard" });
+    window.close();
+  });
+
+  btnOptions.addEventListener("click", (e) => {
+    e.preventDefault();
+    chrome.runtime.openOptionsPage();
+    window.close();
+  });
+
+  // ---- Helpers ------------------------------------------------------------
+
+  function formatNumber(num) {
+    if (num >= 10000) return (num / 1000).toFixed(1) + "k";
+    if (num >= 1000) return num.toLocaleString();
+    return String(num);
+  }
+
+  // ---- Initialize ---------------------------------------------------------
+
+  statusBanner.parentElement.classList.add("loading");
+  await Promise.all([fetchStatus(), checkAccountStatus()]);
+  statusBanner.parentElement.classList.remove("loading");
+});
