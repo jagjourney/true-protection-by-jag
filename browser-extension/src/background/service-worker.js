@@ -1,7 +1,8 @@
 /**
  * True Protection by Jag - Background Service Worker
  * Handles URL reputation checking, download scanning, phishing detection,
- * cryptojacking blocking, and communication with the True Protection daemon.
+ * cryptojacking blocking, audit logging, and communication with the
+ * True Protection daemon.
  *
  * Copyright (c) Jag Journey, LLC. All rights reserved.
  */
@@ -40,6 +41,141 @@ let stats = {
   date: new Date().toDateString(),
 };
 
+// ---- API Configuration ----------------------------------------------------
+
+const API_BASE = "https://tpjsecurity.com/api/v1";
+
+// ---- Audit Log Queue ------------------------------------------------------
+
+const AUDIT_FLUSH_INTERVAL_MS = 30000; // 30 seconds
+let auditQueue = [];
+let auditFlushTimer = null;
+
+/**
+ * Queue an audit log entry. Logs are batched and flushed every 30 seconds
+ * or when the queue reaches 50 entries - whichever comes first.
+ * Logs are persisted to storage so they survive service worker restarts.
+ * If the user is not authenticated the entry is silently dropped.
+ */
+async function sendAuditLog(action, details = {}) {
+  try {
+    const stored = await chrome.storage.local.get("tpj_account");
+    const token = stored.tpj_account?.auth_token;
+    if (!token) return; // not logged in - skip
+
+    const entry = {
+      action,
+      details,
+      timestamp: new Date().toISOString(),
+      browser: getBrowserInfo(),
+    };
+
+    auditQueue.push(entry);
+
+    // Persist queue in case the service worker is terminated
+    await chrome.storage.local.set({ tpj_audit_queue: auditQueue });
+
+    // Flush immediately if queue is large
+    if (auditQueue.length >= 50) {
+      await flushAuditQueue();
+    }
+  } catch {
+    // Never let audit logging break protection
+  }
+}
+
+/**
+ * Flush all queued audit log entries to the API in a single batch request.
+ */
+async function flushAuditQueue() {
+  if (auditQueue.length === 0) return;
+
+  try {
+    const stored = await chrome.storage.local.get("tpj_account");
+    const token = stored.tpj_account?.auth_token;
+    if (!token) {
+      // Not authenticated - clear the queue
+      auditQueue = [];
+      await chrome.storage.local.remove("tpj_audit_queue");
+      return;
+    }
+
+    const batch = [...auditQueue];
+    auditQueue = [];
+    await chrome.storage.local.remove("tpj_audit_queue");
+
+    const resp = await fetch(`${API_BASE}/audit/log`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ entries: batch }),
+    });
+
+    if (!resp.ok) {
+      // Put entries back so they can be retried
+      auditQueue = [...batch, ...auditQueue];
+      await chrome.storage.local.set({ tpj_audit_queue: auditQueue });
+    }
+  } catch {
+    // Network error - entries remain in storage for next flush
+  }
+}
+
+/**
+ * Restore any queued audit entries that were persisted before the service
+ * worker was terminated.
+ */
+async function restoreAuditQueue() {
+  try {
+    const stored = await chrome.storage.local.get("tpj_audit_queue");
+    if (stored.tpj_audit_queue && Array.isArray(stored.tpj_audit_queue)) {
+      auditQueue = stored.tpj_audit_queue;
+    }
+  } catch {
+    // Ignore
+  }
+}
+
+function startAuditFlushTimer() {
+  if (auditFlushTimer) return;
+  auditFlushTimer = setInterval(flushAuditQueue, AUDIT_FLUSH_INTERVAL_MS);
+}
+
+function getBrowserInfo() {
+  const ua = navigator.userAgent || "";
+  return {
+    userAgent: ua,
+    extensionVersion: chrome.runtime.getManifest().version,
+  };
+}
+
+// ---- Auth Helpers ----------------------------------------------------------
+
+/**
+ * Check whether the user is currently authenticated.
+ * Returns the account object or null.
+ */
+async function getAuthAccount() {
+  try {
+    const stored = await chrome.storage.local.get("tpj_account");
+    const account = stored.tpj_account;
+    if (account && account.auth_token) return account;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns true if the user is logged in.
+ */
+async function isAuthenticated() {
+  return (await getAuthAccount()) !== null;
+}
+
 // ---- Initialization -------------------------------------------------------
 
 chrome.runtime.onInstalled.addListener(async (details) => {
@@ -48,11 +184,14 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   await blocklist.init();
   await loadSettings();
   await resetDailyStatsIfNeeded();
+  await restoreAuditQueue();
+  startAuditFlushTimer();
 
   // Set up periodic alarms
   chrome.alarms.create("blocklist-update", { periodInMinutes: 30 });
   chrome.alarms.create("stats-reset-check", { periodInMinutes: 60 });
   chrome.alarms.create("daemon-heartbeat", { periodInMinutes: 5 });
+  chrome.alarms.create("audit-flush", { periodInMinutes: 1 });
 
   if (details.reason === "install") {
     await chrome.storage.local.set({
@@ -71,7 +210,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
       type: "basic",
       iconUrl: chrome.runtime.getURL("icons/icon-128.png"),
       title: "True Protection by Jag",
-      message: "Web protection is now active. You are protected against phishing, malware, and cryptojacking.",
+      message: "Web protection is now active. Log in at the popup to enable full protection.",
     });
   }
 
@@ -101,6 +240,8 @@ chrome.runtime.onStartup.addListener(async () => {
   await blocklist.init();
   await loadSettings();
   await resetDailyStatsIfNeeded();
+  await restoreAuditQueue();
+  startAuditFlushTimer();
   updateBadge();
   connectToDaemon();
   initPasswordManager();
@@ -246,6 +387,7 @@ function checkUrl(url) {
 chrome.webNavigation?.onBeforeNavigate?.addListener(async (details) => {
   if (details.frameId !== 0) return; // Only main frame
   if (!protectionEnabled) return;
+  if (!(await isAuthenticated())) return; // Require login
 
   const threats = checkUrl(details.url);
   if (threats && threats.some((t) => t.severity === "high")) {
@@ -263,6 +405,29 @@ chrome.webNavigation?.onBeforeNavigate?.addListener(async (details) => {
     });
     await saveStats();
     updateBadge();
+
+    // Audit log threats
+    for (const t of threats) {
+      if (t.type === "phishing") {
+        sendAuditLog("extension.phishing_detected", {
+          url: details.url,
+          confidence: t.confidence || 0,
+          message: t.message,
+        });
+      } else if (t.type === "cryptojacking") {
+        sendAuditLog("extension.mining_blocked", {
+          url: details.url,
+          message: t.message,
+        });
+      } else {
+        sendAuditLog("extension.threat_blocked", {
+          url: details.url,
+          threatType: t.type,
+          severity: t.severity,
+          message: t.message,
+        });
+      }
+    }
 
     // Show warning notification for high-severity threats
     const prefs = (await chrome.storage.local.get("notification_prefs")).notification_prefs || {};
@@ -404,20 +569,59 @@ chrome.downloads?.onCreated?.addListener(async (downloadItem) => {
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (changeInfo.status === "complete" && tab.url) {
+    // Only scan and track if authenticated
+    const authed = await isAuthenticated();
+    if (!authed) {
+      handlePmTabUpdated(tabId, changeInfo, tab);
+      return;
+    }
+
     stats.pagesScanned++;
     await saveStats();
 
     // Run URL analysis on the completed page
     const threats = checkUrl(tab.url);
+    const isSafe = !threats || threats.length === 0;
+
     if (threats) {
       tabThreats.set(tabId, {
         url: tab.url,
         threats: threats,
         timestamp: Date.now(),
       });
+
+      // Audit log each threat type
+      for (const threat of threats) {
+        if (threat.type === "phishing") {
+          sendAuditLog("extension.phishing_detected", {
+            url: tab.url,
+            confidence: threat.confidence || 0,
+            message: threat.message,
+          });
+        } else if (threat.type === "cryptojacking") {
+          sendAuditLog("extension.mining_blocked", {
+            url: tab.url,
+            message: threat.message,
+          });
+        } else {
+          sendAuditLog("extension.threat_blocked", {
+            url: tab.url,
+            threatType: threat.type,
+            severity: threat.severity,
+            message: threat.message,
+          });
+        }
+      }
     } else {
       tabThreats.delete(tabId);
     }
+
+    // Log page scan
+    sendAuditLog("extension.page_scanned", {
+      url: tab.url,
+      result: isSafe ? "safe" : "threats_found",
+      threatCount: threats ? threats.length : 0,
+    });
   }
 
   // Delegate to password manager tab tracking
@@ -548,6 +752,10 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
       }
       break;
 
+    case "audit-flush":
+      await flushAuditQueue();
+      break;
+
     default:
       // Delegate password manager alarms
       handlePmAlarm(alarm.name);
@@ -573,15 +781,23 @@ async function handleMessage(message, sender) {
   }
 
   switch (message.type) {
+    // -- Auth check (used by content scripts) --
+    case "CHECK_AUTH": {
+      const authed = await isAuthenticated();
+      return { authenticated: authed };
+    }
+
     // -- Popup requests --
     case "GET_STATUS": {
       const tabId = message.tabId;
       const threatData = tabId ? tabThreats.get(tabId) : null;
+      const authed = await isAuthenticated();
       return {
         protectionEnabled,
         protectionLevel,
         daemonConnected,
         jagaiCloudEnabled,
+        authenticated: authed,
         stats: { ...stats },
         currentTab: threatData || null,
         blocklistStats: blocklist.getStats(),
@@ -589,9 +805,16 @@ async function handleMessage(message, sender) {
     }
 
     case "TOGGLE_PROTECTION": {
+      // Require auth to toggle protection
+      if (!(await isAuthenticated())) {
+        return { error: "Login required", protectionEnabled };
+      }
       protectionEnabled = !protectionEnabled;
       await chrome.storage.local.set({ protection_enabled: protectionEnabled });
       updateBadge();
+      sendAuditLog("extension.protection_toggled", {
+        enabled: protectionEnabled,
+      });
       return { protectionEnabled };
     }
 
@@ -636,9 +859,17 @@ async function handleMessage(message, sender) {
       return await syncBlocklistFromApi();
     }
 
+    case "SYNC_SETTINGS": {
+      await syncSettingsFromAccount();
+      return { success: true };
+    }
+
     // -- Content script reports --
     case "PAGE_SCAN_RESULT": {
       if (!sender.tab) return { received: true };
+
+      // Require auth for content script results to be processed
+      if (!(await isAuthenticated())) return { received: true };
 
       const tabId = sender.tab.id;
       const existing = tabThreats.get(tabId) || { url: sender.tab.url, threats: [], timestamp: Date.now() };
@@ -649,8 +880,27 @@ async function handleMessage(message, sender) {
 
         stats.threatsBlocked += message.threats.length;
         message.threats.forEach((t) => {
-          if (t.type === "phishing") stats.phishingDetected++;
-          if (t.type === "cryptojacking") stats.miningBlocked++;
+          if (t.type === "phishing") {
+            stats.phishingDetected++;
+            sendAuditLog("extension.phishing_detected", {
+              url: sender.tab.url,
+              confidence: t.confidence || 0,
+              message: t.message,
+            });
+          } else if (t.type === "cryptojacking") {
+            stats.miningBlocked++;
+            sendAuditLog("extension.mining_blocked", {
+              url: sender.tab.url,
+              message: t.message,
+            });
+          } else {
+            sendAuditLog("extension.threat_blocked", {
+              url: sender.tab.url,
+              threatType: t.type,
+              severity: t.severity,
+              message: t.message,
+            });
+          }
         });
         await saveStats();
         updateBadge();
@@ -699,17 +949,22 @@ async function handleMessage(message, sender) {
     }
 
     case "SAVE_SETTINGS": {
+      const changes = {};
       if (message.settings.protectionLevel) {
         protectionLevel = message.settings.protectionLevel;
         await chrome.storage.local.set({ protection_level: protectionLevel });
+        changes.protectionLevel = protectionLevel;
       }
       if (typeof message.settings.jagaiCloudEnabled === "boolean") {
         jagaiCloudEnabled = message.settings.jagaiCloudEnabled;
         await chrome.storage.local.set({ jagai_cloud_enabled: jagaiCloudEnabled });
+        changes.jagaiCloudEnabled = jagaiCloudEnabled;
       }
       if (message.settings.notificationPrefs) {
         await chrome.storage.local.set({ notification_prefs: message.settings.notificationPrefs });
+        changes.notificationPrefs = message.settings.notificationPrefs;
       }
+      sendAuditLog("extension.settings_changed", changes);
       return { success: true };
     }
 
@@ -737,11 +992,12 @@ async function handleMessage(message, sender) {
 
 // ---- Account / Auth (tpjsecurity.com Sanctum) -----------------------------
 
-const API_BASE = "https://tpjsecurity.com/api/v1";
-
 /**
  * Authenticate against tpjsecurity.com Sanctum API.
  * Stores the Bearer token and user info in chrome.storage.local.
+ *
+ * Expected API response:
+ * { token, user: { id, name, email, subscription: { tier, status } } }
  */
 async function handleAccountLogin(email, password) {
   try {
@@ -751,7 +1007,11 @@ async function handleAccountLogin(email, password) {
         "Content-Type": "application/json",
         "Accept": "application/json",
       },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({
+        email,
+        password,
+        device_name: "browser-extension",
+      }),
     });
 
     if (!resp.ok) {
@@ -765,25 +1025,40 @@ async function handleAccountLogin(email, password) {
       return { success: false, error: "No token received from server" };
     }
 
+    // Normalize subscription tier from nested or flat response
+    const subscription = data.user?.subscription || {};
+    const tier = subscription.tier
+      || data.user?.license_tier
+      || data.license_tier
+      || "free";
+
     const accountData = {
       auth_token: token,
       user: data.user || {},
-      license_tier: data.user?.license_tier || data.license_tier || "free",
+      license_tier: tier,
+      subscription_status: subscription.status || "active",
       logged_in_at: Date.now(),
     };
 
     await chrome.storage.local.set({ tpj_account: accountData });
 
-    // Gate JagAI features behind Pro
-    if (accountData.license_tier === "pro") {
+    // Gate JagAI features behind pro/enterprise tiers
+    const isPaid = tier === "pro" || tier === "enterprise";
+    if (isPaid) {
       jagaiCloudEnabled = true;
       await chrome.storage.local.set({ jagai_cloud_enabled: true });
     }
 
+    // Audit log the login
+    sendAuditLog("extension.login", { email });
+
+    // Sync protection settings from the server account
+    await syncSettingsFromAccount();
+
     return {
       success: true,
       user: accountData.user,
-      license_tier: accountData.license_tier,
+      license_tier: tier,
     };
   } catch (err) {
     console.error("[TrueProtect] Login error:", err);
@@ -792,26 +1067,89 @@ async function handleAccountLogin(email, password) {
 }
 
 /**
+ * Pull protection settings from the user's account and apply them locally.
+ */
+async function syncSettingsFromAccount() {
+  try {
+    const stored = await chrome.storage.local.get("tpj_account");
+    const token = stored.tpj_account?.auth_token;
+    if (!token) return;
+
+    const resp = await fetch(`${API_BASE}/user/settings`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+    });
+
+    if (!resp.ok) return;
+
+    const data = await resp.json();
+
+    // Apply server-side settings locally (only if present)
+    if (data.protection_level) {
+      protectionLevel = data.protection_level;
+      await chrome.storage.local.set({ protection_level: protectionLevel });
+    }
+    if (typeof data.jagai_cloud_enabled === "boolean") {
+      jagaiCloudEnabled = data.jagai_cloud_enabled;
+      await chrome.storage.local.set({ jagai_cloud_enabled: jagaiCloudEnabled });
+    }
+    if (data.notification_prefs) {
+      await chrome.storage.local.set({ notification_prefs: data.notification_prefs });
+    }
+
+    console.log("[TrueProtect] Settings synced from account");
+  } catch (err) {
+    console.error("[TrueProtect] Settings sync error:", err);
+  }
+}
+
+/**
  * Log out: clear stored token and user data.
  */
 async function handleAccountLogout() {
+  // Flush any remaining audit logs before clearing the token
+  await flushAuditQueue();
+
   try {
     const stored = await chrome.storage.local.get("tpj_account");
     const token = stored.tpj_account?.auth_token;
 
-    // Attempt server-side logout (best-effort)
+    // Audit log the logout while we still have the token
     if (token) {
+      // Send logout audit directly (not queued) since we are about to clear
+      fetch(`${API_BASE}/audit/log`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          entries: [{
+            action: "extension.logout",
+            details: {},
+            timestamp: new Date().toISOString(),
+            browser: getBrowserInfo(),
+          }],
+        }),
+      }).catch(() => {});
+
+      // Attempt server-side logout (best-effort)
       fetch(`${API_BASE}/auth/logout`, {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${token}`,
-          "Accept": "application/json",
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
         },
       }).catch(() => {});
     }
   } catch {}
 
   await chrome.storage.local.remove("tpj_account");
+  auditQueue = [];
+  await chrome.storage.local.remove("tpj_audit_queue");
   return { success: true };
 }
 

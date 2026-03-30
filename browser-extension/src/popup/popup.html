@@ -37,10 +37,23 @@
       <!-- Logged in state -->
       <div class="account-logged-in hidden" id="account-logged-in">
         <div class="account-info">
-          <span class="account-email" id="account-email"></span>
+          <span class="account-name" id="account-name"></span>
           <span class="account-tier" id="account-tier">Free</span>
         </div>
         <button class="btn-sm btn-outline-sm" id="btn-logout">Log Out</button>
+      </div>
+    </section>
+
+    <!-- Login required notice (shown when not logged in) -->
+    <section class="login-required-section hidden" id="login-required-section">
+      <div class="login-required-notice">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="32" height="32">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        <p class="login-required-title">Login Required</p>
+        <p class="login-required-desc">Sign in to your True Protection account to enable web protection features.</p>
+        <a href="https://tpjsecurity.com/register" class="login-required-link" id="link-register">Create an Account</a>
       </div>
     </section>
 

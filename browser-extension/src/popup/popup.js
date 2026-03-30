@@ -1,7 +1,8 @@
 /**
  * True Protection by Jag - Popup Logic
  * Handles popup UI state, user interactions, account login/logout,
- * license tier gating, and communication with the background service worker.
+ * license tier gating, auth gating, and communication with the
+ * background service worker.
  *
  * Copyright (c) Jag Journey, LLC. All rights reserved.
  */
@@ -40,9 +41,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   const loginError = document.getElementById("login-error");
   const btnLogin = document.getElementById("btn-login");
   const btnLogout = document.getElementById("btn-logout");
-  const accountEmail = document.getElementById("account-email");
+  const accountName = document.getElementById("account-name");
   const accountTier = document.getElementById("account-tier");
   const proSection = document.getElementById("pro-section");
+
+  // Auth-gated sections
+  const loginRequiredSection = document.getElementById("login-required-section");
+  const pageStatusSection = document.getElementById("page-status-section");
+  const statsSection = document.querySelector(".stats-section");
+  const toggleSection = document.querySelector(".toggle-section");
+  const actionsSection = document.querySelector(".actions-section");
+  const linkRegister = document.getElementById("link-register");
 
   // ---- Fetch Status -------------------------------------------------------
 
@@ -81,6 +90,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ---- Account UI ---------------------------------------------------------
 
+  /** Track whether the user is currently authenticated */
+  let isLoggedIn = false;
+
   async function checkAccountStatus() {
     try {
       const response = await chrome.runtime.sendMessage({ type: "ACCOUNT_STATUS" });
@@ -94,26 +106,62 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  /**
+   * Map subscription tier strings to display labels.
+   */
+  function tierLabel(tier) {
+    const labels = {
+      free: "Free",
+      pro: "Pro",
+      enterprise: "Enterprise",
+      business: "Business",
+    };
+    return labels[tier] || "Free";
+  }
+
   function showLoggedInState(user, tier) {
+    isLoggedIn = true;
     accountLoggedOut.classList.add("hidden");
     accountLoggedIn.classList.remove("hidden");
-    accountEmail.textContent = user?.email || user?.name || "Account";
-    const tierLabel = tier === "pro" ? "Pro" : "Free";
-    accountTier.textContent = tierLabel;
+
+    // Show user name with "Welcome, " prefix - fall back to email
+    const displayName = user?.name || user?.email || "Account";
+    accountName.textContent = "Welcome, " + displayName.split(" ")[0];
+
+    // Tier badge
+    accountTier.textContent = tierLabel(tier);
     accountTier.className = "account-tier tier-" + (tier || "free");
 
-    // Show or hide JagAI Pro section
-    if (tier === "pro") {
+    // Show or hide JagAI Pro section for paid tiers
+    const isPaid = tier === "pro" || tier === "enterprise";
+    if (isPaid) {
       proSection.classList.remove("hidden");
     } else {
       proSection.classList.add("hidden");
     }
+
+    // Show protection features, hide login-required notice
+    loginRequiredSection.classList.add("hidden");
+    pageStatusSection.classList.remove("hidden");
+    if (statsSection) statsSection.classList.remove("hidden");
+    if (toggleSection) toggleSection.classList.remove("hidden");
+    if (actionsSection) actionsSection.classList.remove("hidden");
+    protectionToggle.disabled = false;
   }
 
   function showLoggedOutState() {
+    isLoggedIn = false;
     accountLoggedOut.classList.remove("hidden");
     accountLoggedIn.classList.add("hidden");
     proSection.classList.add("hidden");
+
+    // Hide all protection features, show login-required notice
+    loginRequiredSection.classList.remove("hidden");
+    pageStatusSection.classList.add("hidden");
+    if (statsSection) statsSection.classList.add("hidden");
+    if (toggleSection) toggleSection.classList.add("hidden");
+    if (actionsSection) actionsSection.classList.add("hidden");
+    protectionToggle.disabled = true;
   }
 
   loginForm.addEventListener("submit", async (e) => {
@@ -133,6 +181,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         loginEmail.value = "";
         loginPassword.value = "";
         showLoggedInState(response.user, response.license_tier);
+        // Refresh status now that we are authenticated
+        await fetchStatus();
       } else {
         loginError.textContent = response?.error || "Login failed";
         loginError.classList.remove("hidden");
@@ -151,6 +201,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       await chrome.runtime.sendMessage({ type: "ACCOUNT_LOGOUT" });
     } catch {}
     showLoggedOutState();
+  });
+
+  linkRegister.addEventListener("click", (e) => {
+    e.preventDefault();
+    chrome.tabs.create({ url: "https://tpjsecurity.com/register" });
+    window.close();
   });
 
   // ---- UI Update Functions ------------------------------------------------
@@ -336,6 +392,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ---- Initialize ---------------------------------------------------------
 
   statusBanner.parentElement.classList.add("loading");
-  await Promise.all([fetchStatus(), checkAccountStatus()]);
+
+  // Check account status first to determine auth gating
+  await checkAccountStatus();
+
+  // Only fetch protection status if the user is logged in
+  if (isLoggedIn) {
+    await fetchStatus();
+  }
+
   statusBanner.parentElement.classList.remove("loading");
 });

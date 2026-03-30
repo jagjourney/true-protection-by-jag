@@ -477,16 +477,34 @@
     }
   });
 
-  // ─── Start Scanning ───────────────────────────────────────────────────
+  // ─── Auth-Gated Start ─────────────────────────────────────────────────
 
-  if (document.readyState === "complete" || document.readyState === "interactive") {
+  /**
+   * Only start scanning if the user is authenticated.
+   * If not logged in, page scanning is skipped entirely.
+   */
+  async function startIfAuthenticated() {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: "CHECK_AUTH" });
+      if (!response || !response.authenticated) {
+        // Not logged in - skip scanning
+        return;
+      }
+    } catch {
+      // Extension context may be invalid - skip
+      return;
+    }
+
+    // User is authenticated - begin scanning
     setTimeout(scanPage, SCAN_DELAY_MS);
-  } else {
-    document.addEventListener("DOMContentLoaded", () => {
-      setTimeout(scanPage, SCAN_DELAY_MS);
-    });
+    startObserver();
   }
 
-  // Start mutation observer for dynamic content
-  startObserver();
+  if (document.readyState === "complete" || document.readyState === "interactive") {
+    startIfAuthenticated();
+  } else {
+    document.addEventListener("DOMContentLoaded", () => {
+      startIfAuthenticated();
+    });
+  }
 })();
