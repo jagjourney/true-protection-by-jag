@@ -381,6 +381,126 @@ document.addEventListener("DOMContentLoaded", async () => {
     window.close();
   });
 
+  // ---- History Panel -------------------------------------------------------
+
+  const statsSection = document.getElementById("stats-section");
+  const historySection = document.getElementById("history-section");
+  const historyList = document.getElementById("history-list");
+  const historyEmpty = document.getElementById("history-empty");
+  const historyClose = document.getElementById("history-close");
+  const historyTabs = document.querySelectorAll(".history-tab");
+  let currentHistoryFilter = "all";
+
+  if (statsSection) {
+    statsSection.addEventListener("click", (e) => {
+      const filter = e.target.closest("[data-filter]")?.dataset.filter || "all";
+      openHistory(filter);
+    });
+  }
+
+  if (historyClose) {
+    historyClose.addEventListener("click", () => {
+      historySection.classList.add("hidden");
+      statsSection.classList.remove("hidden");
+    });
+  }
+
+  historyTabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      historyTabs.forEach((t) => t.classList.remove("active"));
+      tab.classList.add("active");
+      currentHistoryFilter = tab.dataset.filter;
+      loadHistory(currentHistoryFilter);
+    });
+  });
+
+  async function openHistory(filter) {
+    currentHistoryFilter = filter;
+    historyTabs.forEach((t) => {
+      t.classList.toggle("active", t.dataset.filter === filter);
+    });
+    statsSection.classList.add("hidden");
+    historySection.classList.remove("hidden");
+    await loadHistory(filter);
+  }
+
+  async function loadHistory(filter) {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "GET_HISTORY",
+        filter: filter,
+        limit: 50,
+      });
+
+      renderHistory(response.history || []);
+    } catch (err) {
+      console.error("[TrueProtect Popup] Failed to load history:", err);
+    }
+  }
+
+  function renderHistory(entries) {
+    // Remove old items
+    const old = historyList.querySelectorAll(".history-item");
+    old.forEach((el) => el.remove());
+
+    if (!entries || entries.length === 0) {
+      historyEmpty.classList.remove("hidden");
+      return;
+    }
+    historyEmpty.classList.add("hidden");
+
+    entries.forEach((entry) => {
+      const item = document.createElement("div");
+      item.className = "history-item";
+      if (entry.type !== "scan") item.classList.add("history-threat");
+
+      const dot = document.createElement("span");
+      dot.className = "history-dot";
+      if (entry.type === "scan") dot.classList.add("dot-safe");
+      else if (entry.severity === "high") dot.classList.add("dot-danger");
+      else dot.classList.add("dot-warning");
+
+      const info = document.createElement("div");
+      info.className = "history-info";
+
+      const urlEl = document.createElement("span");
+      urlEl.className = "history-url";
+      try {
+        const u = new URL(entry.url);
+        urlEl.textContent = u.hostname + (u.pathname !== "/" ? u.pathname.slice(0, 40) : "");
+      } catch {
+        urlEl.textContent = entry.url?.slice(0, 50) || "Unknown";
+      }
+      urlEl.title = entry.url;
+
+      const meta = document.createElement("span");
+      meta.className = "history-meta";
+      const ago = formatTimeAgo(entry.timestamp);
+      if (entry.type === "scan") {
+        meta.textContent = ago;
+      } else {
+        meta.textContent = (entry.message || entry.type) + " - " + ago;
+      }
+
+      info.appendChild(urlEl);
+      info.appendChild(meta);
+
+      item.appendChild(dot);
+      item.appendChild(info);
+      historyList.appendChild(item);
+    });
+  }
+
+  function formatTimeAgo(ts) {
+    const diff = Date.now() - ts;
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return mins + "m ago";
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return hrs + "h ago";
+    return Math.floor(hrs / 24) + "d ago";
+  }
+
   // ---- Helpers ------------------------------------------------------------
 
   function formatNumber(num) {

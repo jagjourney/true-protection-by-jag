@@ -41,6 +41,10 @@ let stats = {
   date: new Date().toDateString(),
 };
 
+// Browsing history for scans and threats (persisted, max 200 entries)
+const MAX_HISTORY = 200;
+let scanHistory = [];
+
 // ---- API Configuration ----------------------------------------------------
 
 const API_BASE = "https://tpjsecurity.com/api/v1";
@@ -134,6 +138,46 @@ async function restoreAuditQueue() {
     const stored = await chrome.storage.local.get("tpj_audit_queue");
     if (stored.tpj_audit_queue && Array.isArray(stored.tpj_audit_queue)) {
       auditQueue = stored.tpj_audit_queue;
+    }
+  } catch {
+    // Ignore
+  }
+}
+
+/**
+ * Record a scan or threat event to the browsable history.
+ * Keeps the most recent MAX_HISTORY entries.
+ */
+async function recordHistory(type, url, details = {}) {
+  try {
+    const entry = {
+      type, // "scan", "threat", "blocked", "phishing", "mining"
+      url,
+      title: details.title || "",
+      message: details.message || "",
+      severity: details.severity || "",
+      timestamp: Date.now(),
+    };
+
+    scanHistory.unshift(entry);
+    if (scanHistory.length > MAX_HISTORY) {
+      scanHistory = scanHistory.slice(0, MAX_HISTORY);
+    }
+
+    await chrome.storage.local.set({ tpj_scan_history: scanHistory });
+  } catch {
+    // Never break protection over history logging
+  }
+}
+
+/**
+ * Restore scan history from storage on service worker start.
+ */
+async function restoreScanHistory() {
+  try {
+    const stored = await chrome.storage.local.get("tpj_scan_history");
+    if (stored.tpj_scan_history && Array.isArray(stored.tpj_scan_history)) {
+      scanHistory = stored.tpj_scan_history;
     }
   } catch {
     // Ignore
@@ -270,6 +314,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   await loadSettings();
   await resetDailyStatsIfNeeded();
   await restoreAuditQueue();
+  await restoreScanHistory();
   startAuditFlushTimer();
 
   // Set up periodic alarms
@@ -326,6 +371,7 @@ chrome.runtime.onStartup.addListener(async () => {
   await loadSettings();
   await resetDailyStatsIfNeeded();
   await restoreAuditQueue();
+  await restoreScanHistory();
   startAuditFlushTimer();
   updateBadge();
   connectToDaemon();
@@ -663,6 +709,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
     stats.pagesScanned++;
     await saveStats();
+    recordHistory("scan", tab.url, { title: tab.title });
 
     // Run URL analysis on the completed page
     const threats = checkUrl(tab.url);
@@ -674,6 +721,15 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
         threats: threats,
         timestamp: Date.now(),
       });
+
+      // Record each threat in browsable history
+      for (const t of threats) {
+        recordHistory("threat", tab.url, {
+          title: tab.title,
+          message: t.message,
+          severity: t.severity || "medium",
+        });
+      }
 
       // Audit log each threat type
       for (const threat of threats) {
@@ -1082,6 +1138,23 @@ async function handleMessage(message, sender) {
 
     case "GET_BLOCKLIST": {
       return { customBlocklist: blocklist.getCustomBlockedDomains() };
+    }
+
+    case "GET_HISTORY": {
+      const filter = message.filter || "all"; // "all", "scans", "threats"
+      let history = [...scanHistory];
+      if (filter === "scans") {
+        history = history.filter((h) => h.type === "scan");
+      } else if (filter === "threats") {
+        history = history.filter((h) => h.type !== "scan");
+      }
+      return { history: history.slice(0, message.limit || 100) };
+    }
+
+    case "CLEAR_HISTORY": {
+      scanHistory = [];
+      await chrome.storage.local.remove("tpj_scan_history");
+      return { success: true };
     }
 
     default:

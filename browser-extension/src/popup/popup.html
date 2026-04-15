@@ -90,21 +90,43 @@
       </div>
     </section>
 
-    <!-- Stats -->
-    <section class="stats-section">
-      <div class="stat-item">
+    <!-- Stats (clickable to open history) -->
+    <section class="stats-section" id="stats-section" style="cursor: pointer;" title="Click to view history">
+      <div class="stat-item" data-filter="scans">
         <span class="stat-value" id="stat-scanned">0</span>
         <span class="stat-label">Pages Scanned</span>
       </div>
       <div class="stat-divider"></div>
-      <div class="stat-item">
+      <div class="stat-item" data-filter="threats">
         <span class="stat-value" id="stat-blocked">0</span>
         <span class="stat-label">Threats Blocked</span>
       </div>
       <div class="stat-divider"></div>
-      <div class="stat-item">
+      <div class="stat-item" data-filter="threats">
         <span class="stat-value" id="stat-phishing">0</span>
         <span class="stat-label">Phishing</span>
+      </div>
+    </section>
+
+    <!-- History Panel (slides over stats when clicked) -->
+    <section class="history-section hidden" id="history-section">
+      <div class="history-header">
+        <div class="history-tabs">
+          <button class="history-tab active" data-filter="all" id="tab-all">All</button>
+          <button class="history-tab" data-filter="scans" id="tab-scans">Scans</button>
+          <button class="history-tab" data-filter="threats" id="tab-threats">Threats</button>
+        </div>
+        <button class="history-close" id="history-close" title="Close history">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="history-list" id="history-list">
+        <div class="history-empty" id="history-empty">
+          <p>No browsing history yet. Visit some pages to see scan results here.</p>
+        </div>
       </div>
     </section>
 
