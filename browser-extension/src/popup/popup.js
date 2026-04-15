@@ -48,7 +48,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Auth-gated sections
   const loginRequiredSection = document.getElementById("login-required-section");
   const pageStatusSection = document.getElementById("page-status-section");
-  const statsSection = document.querySelector(".stats-section");
+  const statsSection = document.getElementById("stats-section") || document.querySelector(".stats-section");
   const toggleSection = document.querySelector(".toggle-section");
   const actionsSection = document.querySelector(".actions-section");
   const linkRegister = document.getElementById("link-register");
@@ -383,7 +383,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ---- History Panel -------------------------------------------------------
 
-  const statsSection = document.getElementById("stats-section");
+  // statsSection already declared above via querySelector
   const historySection = document.getElementById("history-section");
   const historyList = document.getElementById("history-list");
   const historyEmpty = document.getElementById("history-empty");
