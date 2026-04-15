@@ -103,9 +103,13 @@ async function flushAuditQueue() {
     auditQueue = [];
     await chrome.storage.local.remove("tpj_audit_queue");
 
+    const info = getBrowserInfo();
     const resp = await authenticatedFetch(`${API_BASE}/audit/log`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Browser-Name": info.browserName,
+      },
       body: JSON.stringify({ entries: batch }),
     });
 
@@ -143,9 +147,43 @@ function startAuditFlushTimer() {
 
 function getBrowserInfo() {
   const ua = navigator.userAgent || "";
+  const version = chrome.runtime.getManifest().version;
+
+  // Detect browser name from UA
+  let browserName = "Unknown";
+  let browserVersion = "";
+
+  // Brave doesn't identify itself in UA but we can detect it
+  if (typeof navigator.brave !== "undefined") {
+    browserName = "Brave";
+  } else if (ua.includes("Edg/")) {
+    browserName = "Edge";
+  } else if (ua.includes("OPR/")) {
+    browserName = "Opera";
+  } else if (ua.includes("Firefox/")) {
+    browserName = "Firefox";
+  } else if (ua.includes("Chrome/")) {
+    browserName = "Chrome";
+  }
+
+  const versionMatch = ua.match(/(?:Chrome|Firefox|Edg|OPR|Version)\/([\d.]+)/);
+  if (versionMatch) {
+    browserVersion = versionMatch[1];
+  }
+
+  // Detect OS
+  let osName = "Unknown";
+  if (ua.includes("Windows")) osName = "Windows";
+  else if (ua.includes("Mac OS X")) osName = "macOS";
+  else if (ua.includes("Linux")) osName = "Linux";
+  else if (ua.includes("Android")) osName = "Android";
+
   return {
     userAgent: ua,
-    extensionVersion: chrome.runtime.getManifest().version,
+    extensionVersion: version,
+    browserName,
+    browserVersion,
+    osName,
   };
 }
 
@@ -991,6 +1029,7 @@ async function handleMessage(message, sender) {
         },
         daemonConnected,
         whitelist: Array.from(blocklist.customWhitelist),
+        customBlocklist: blocklist.getCustomBlockedDomains(),
         blocklistStats: blocklist.getStats(),
       };
     }
@@ -1031,6 +1070,20 @@ async function handleMessage(message, sender) {
       return { whitelist: Array.from(blocklist.customWhitelist) };
     }
 
+    case "ADD_BLOCKLIST": {
+      await blocklist.addCustomBlockedDomain(message.domain);
+      return { success: true, customBlocklist: blocklist.getCustomBlockedDomains() };
+    }
+
+    case "REMOVE_BLOCKLIST": {
+      await blocklist.removeCustomBlockedDomain(message.domain);
+      return { success: true, customBlocklist: blocklist.getCustomBlockedDomains() };
+    }
+
+    case "GET_BLOCKLIST": {
+      return { customBlocklist: blocklist.getCustomBlockedDomains() };
+    }
+
     default:
       console.warn("[TrueProtect] Unknown message type:", message.type);
       return { error: "Unknown message type" };
@@ -1058,6 +1111,9 @@ async function handleAccountLogin(email, password) {
         email,
         password,
         device_name: "browser-extension",
+        extension_version: chrome.runtime.getManifest().version,
+        browser_name: getBrowserInfo().browserName,
+        browser_version: getBrowserInfo().browserVersion,
       }),
     });
 

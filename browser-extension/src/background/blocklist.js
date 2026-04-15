@@ -147,13 +147,21 @@ class BlocklistManager {
 
       this.lastUpdated = stored.blocklist_last_updated || null;
 
+      // Load user's custom blocked domains and merge into active checks
+      await this.loadCustomBlocklist();
+
+      // Snapshot the built-in domain set so we know which are defaults vs custom
+      this.defaultDomains = new Set(DEFAULT_BLOCKLIST_DOMAINS);
+
       console.log(
-        `[TrueProtect] Blocklist loaded: ${this.domainSet.size} domains, ${this.urlPatternSet.size} URL patterns, ${this.miningPatterns.size} mining patterns`
+        `[TrueProtect] Blocklist loaded: ${this.domainSet.size} domains, ${this.urlPatternSet.size} URL patterns, ${this.miningPatterns.size} mining patterns, ${this.customBlocklist?.size ?? 0} custom blocked`
       );
     } catch (err) {
       console.error("[TrueProtect] Failed to load blocklist from storage:", err);
       this.domainSet = new Set(DEFAULT_BLOCKLIST_DOMAINS);
       this.urlPatternSet = new Set(DEFAULT_BLOCKLIST_URL_PATTERNS);
+      this.defaultDomains = new Set(DEFAULT_BLOCKLIST_DOMAINS);
+      this.customBlocklist = new Set();
     }
   }
 
@@ -346,8 +354,76 @@ class BlocklistManager {
       wildcardCount: this.wildcardDomains.length,
       miningPatternCount: this.miningPatterns.size,
       whitelistCount: this.customWhitelist.size,
+      customBlocklistCount: this.customBlocklist ? this.customBlocklist.size : 0,
       lastUpdated: this.lastUpdated,
     };
+  }
+
+  // ---- Custom Blocklist Management -----------------------------------------
+
+  /**
+   * Add a domain to the user's custom blocklist.
+   * @param {string} domain
+   */
+  async addCustomBlockedDomain(domain) {
+    domain = domain.toLowerCase().trim();
+    if (!domain) return;
+
+    if (!this.customBlocklist) {
+      this.customBlocklist = new Set();
+    }
+    this.customBlocklist.add(domain);
+    this.domainSet.add(domain); // Also add to active domain checks
+
+    await chrome.storage.local.set({
+      custom_blocklist: [...this.customBlocklist],
+    });
+  }
+
+  /**
+   * Remove a domain from the user's custom blocklist.
+   * @param {string} domain
+   */
+  async removeCustomBlockedDomain(domain) {
+    domain = domain.toLowerCase().trim();
+    if (!this.customBlocklist) return;
+
+    this.customBlocklist.delete(domain);
+    // Only remove from domainSet if it's not in the built-in list
+    if (!this.defaultDomains || !this.defaultDomains.has(domain)) {
+      this.domainSet.delete(domain);
+    }
+
+    await chrome.storage.local.set({
+      custom_blocklist: [...this.customBlocklist],
+    });
+  }
+
+  /**
+   * Get all custom blocked domains.
+   * @returns {string[]}
+   */
+  getCustomBlockedDomains() {
+    return this.customBlocklist ? [...this.customBlocklist] : [];
+  }
+
+  /**
+   * Load custom blocklist from storage and merge into active checks.
+   */
+  async loadCustomBlocklist() {
+    try {
+      const stored = await chrome.storage.local.get("custom_blocklist");
+      if (stored.custom_blocklist && Array.isArray(stored.custom_blocklist)) {
+        this.customBlocklist = new Set(stored.custom_blocklist);
+        for (const domain of this.customBlocklist) {
+          this.domainSet.add(domain);
+        }
+      } else {
+        this.customBlocklist = new Set();
+      }
+    } catch {
+      this.customBlocklist = new Set();
+    }
   }
 }
 

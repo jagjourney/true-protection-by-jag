@@ -20,6 +20,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   const whitelistList = document.getElementById("whitelist-list");
   const whitelistEmpty = document.getElementById("whitelist-empty");
 
+  // Custom Blocklist
+  const blocklistInput = document.getElementById("blocklist-input");
+  const btnAddBlocklist = document.getElementById("btn-add-blocklist");
+  const blocklistList = document.getElementById("blocklist-list");
+  const blocklistEmpty = document.getElementById("blocklist-empty");
+
   // Cloud
   const cloudToggle = document.getElementById("cloud-toggle");
 
@@ -100,6 +106,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       // Whitelist
       renderWhitelist(response.whitelist || []);
+
+      // Custom Blocklist
+      renderBlocklist(response.customBlocklist || []);
 
       // Blocklist stats
       updateBlocklistStats(response.blocklistStats);
@@ -254,6 +263,91 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (statWhitelistCount) {
       statWhitelistCount.textContent = String(domains.length);
     }
+  }
+
+  // ─── Custom Blocklist Management ───────────────────────────────────────
+
+  if (btnAddBlocklist) {
+    btnAddBlocklist.addEventListener("click", addBlocklistDomain);
+  }
+  if (blocklistInput) {
+    blocklistInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") addBlocklistDomain();
+    });
+  }
+
+  async function addBlocklistDomain() {
+    const domain = blocklistInput.value.trim().toLowerCase();
+    if (!domain) return;
+
+    if (!/^[a-z0-9][a-z0-9\-]*(\.[a-z0-9][a-z0-9\-]*)*\.[a-z]{2,}$/.test(domain)) {
+      showToast("Please enter a valid domain name (e.g., malicious-site.com)", "error");
+      return;
+    }
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "ADD_BLOCKLIST",
+        domain: domain,
+      });
+
+      if (response && response.success) {
+        blocklistInput.value = "";
+        renderBlocklist(response.customBlocklist);
+        showToast(`${domain} added to blocklist`, "success");
+      }
+    } catch (err) {
+      console.error("[TrueProtect Options] Failed to add blocklist:", err);
+      showToast("Failed to add domain to blocklist", "error");
+    }
+  }
+
+  async function removeBlocklistDomain(domain) {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "REMOVE_BLOCKLIST",
+        domain: domain,
+      });
+
+      if (response && response.success) {
+        renderBlocklist(response.customBlocklist);
+        showToast(`${domain} removed from blocklist`, "success");
+      }
+    } catch (err) {
+      console.error("[TrueProtect Options] Failed to remove blocklist:", err);
+      showToast("Failed to remove domain from blocklist", "error");
+    }
+  }
+
+  function renderBlocklist(domains) {
+    if (!blocklistList) return;
+
+    const existingItems = blocklistList.querySelectorAll(".whitelist-item");
+    existingItems.forEach((item) => item.remove());
+
+    if (!domains || domains.length === 0) {
+      if (blocklistEmpty) blocklistEmpty.classList.remove("hidden");
+      return;
+    }
+
+    if (blocklistEmpty) blocklistEmpty.classList.add("hidden");
+
+    domains.sort().forEach((domain) => {
+      const item = document.createElement("div");
+      item.className = "whitelist-item";
+
+      const domainSpan = document.createElement("span");
+      domainSpan.textContent = domain;
+
+      const removeBtn = document.createElement("button");
+      removeBtn.className = "btn btn-danger";
+      removeBtn.textContent = "Unblock";
+      removeBtn.addEventListener("click", () => removeBlocklistDomain(domain));
+
+      item.appendChild(domainSpan);
+      item.appendChild(removeBtn);
+      blocklistList.appendChild(item);
+    });
   }
 
   // ─── Status Updates ───────────────────────────────────────────────────
