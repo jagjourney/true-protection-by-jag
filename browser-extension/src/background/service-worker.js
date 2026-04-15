@@ -90,34 +90,31 @@ async function sendAuditLog(action, details = {}) {
 async function flushAuditQueue() {
   if (auditQueue.length === 0) return;
 
-  try {
-    const stored = await chrome.storage.local.get("tpj_account");
-    const token = stored.tpj_account?.auth_token;
-    if (!token) {
-      // Not authenticated - clear the queue
-      auditQueue = [];
-      await chrome.storage.local.remove("tpj_audit_queue");
-      return;
-    }
+  const account = await getAuthAccount();
+  if (!account) {
+    // Not authenticated - clear the queue
+    auditQueue = [];
+    await chrome.storage.local.remove("tpj_audit_queue");
+    return;
+  }
 
+  try {
     const batch = [...auditQueue];
     auditQueue = [];
     await chrome.storage.local.remove("tpj_audit_queue");
 
-    const resp = await fetch(`${API_BASE}/audit/log`, {
+    const resp = await authenticatedFetch(`${API_BASE}/audit/log`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ entries: batch }),
     });
 
-    if (!resp.ok) {
-      // Put entries back so they can be retried
-      auditQueue = [...batch, ...auditQueue];
-      await chrome.storage.local.set({ tpj_audit_queue: auditQueue });
+    if (!resp || !resp.ok) {
+      // Put entries back so they can be retried (unless session expired)
+      if (resp) {
+        auditQueue = [...batch, ...auditQueue];
+        await chrome.storage.local.set({ tpj_audit_queue: auditQueue });
+      }
     }
   } catch {
     // Network error - entries remain in storage for next flush
@@ -154,16 +151,26 @@ function getBrowserInfo() {
 
 // ---- Auth Helpers ----------------------------------------------------------
 
+const MAX_SESSION_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
 /**
  * Check whether the user is currently authenticated.
  * Returns the account object or null.
+ * Clears stale sessions older than 30 days as a client-side safety net.
  */
 async function getAuthAccount() {
   try {
     const stored = await chrome.storage.local.get("tpj_account");
     const account = stored.tpj_account;
-    if (account && account.auth_token) return account;
-    return null;
+    if (!account || !account.auth_token) return null;
+
+    // Client-side session expiry - server may revoke sooner
+    if (account.logged_in_at && Date.now() - account.logged_in_at > MAX_SESSION_AGE_MS) {
+      await clearSession();
+      return null;
+    }
+
+    return account;
   } catch {
     return null;
   }
@@ -174,6 +181,46 @@ async function getAuthAccount() {
  */
 async function isAuthenticated() {
   return (await getAuthAccount()) !== null;
+}
+
+/**
+ * Clear the stored auth session. Called on logout, token expiry, or 401.
+ */
+async function clearSession() {
+  await chrome.storage.local.remove("tpj_account");
+  jagaiCloudEnabled = false;
+  await chrome.storage.local.set({ jagai_cloud_enabled: false });
+}
+
+/**
+ * Make an authenticated API request. Returns the Response on success.
+ * On 401/403 (expired/revoked token), clears the session and returns null.
+ * Returns null if no auth token is available.
+ */
+async function authenticatedFetch(url, options = {}) {
+  const account = await getAuthAccount();
+  if (!account) return null;
+
+  const headers = {
+    Accept: "application/json",
+    ...(options.headers || {}),
+    Authorization: `Bearer ${account.auth_token}`,
+  };
+
+  try {
+    const resp = await fetch(url, { ...options, headers });
+
+    if (resp.status === 401 || resp.status === 403) {
+      console.warn("[TrueProtect] Auth token expired or revoked, clearing session");
+      await clearSession();
+      return null;
+    }
+
+    return resp;
+  } catch (err) {
+    // Network error - don't clear session, just propagate
+    throw err;
+  }
 }
 
 // ---- Initialization -------------------------------------------------------
@@ -1071,18 +1118,8 @@ async function handleAccountLogin(email, password) {
  */
 async function syncSettingsFromAccount() {
   try {
-    const stored = await chrome.storage.local.get("tpj_account");
-    const token = stored.tpj_account?.auth_token;
-    if (!token) return;
-
-    const resp = await fetch(`${API_BASE}/user/settings`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
-      },
-    });
-
-    if (!resp.ok) return;
+    const resp = await authenticatedFetch(`${API_BASE}/user/settings`);
+    if (!resp || !resp.ok) return;
 
     const data = await resp.json();
 
@@ -1181,19 +1218,10 @@ async function getAccountStatus() {
  */
 async function syncBlocklistFromApi() {
   try {
-    const stored = await chrome.storage.local.get("tpj_account");
-    const token = stored.tpj_account?.auth_token;
-    if (!token) {
-      return { success: false, error: "Not logged in" };
+    const resp = await authenticatedFetch(`${API_BASE}/signatures/latest`);
+    if (!resp) {
+      return { success: false, error: "Session expired, please log in again" };
     }
-
-    const resp = await fetch(`${API_BASE}/signatures/latest`, {
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Accept": "application/json",
-      },
-    });
-
     if (!resp.ok) {
       return { success: false, error: "Failed to fetch signatures" };
     }
