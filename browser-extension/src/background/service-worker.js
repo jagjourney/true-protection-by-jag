@@ -156,6 +156,7 @@ async function recordHistory(type, url, details = {}) {
       title: details.title || "",
       message: details.message || "",
       severity: details.severity || "",
+      reason: details.reason || "", // "phishing", "malware", "mining", "blocklist", "custom", "download"
       timestamp: Date.now(),
     };
 
@@ -537,8 +538,19 @@ chrome.webNavigation?.onBeforeNavigate?.addListener(async (details) => {
     await saveStats();
     updateBadge();
 
-    // Audit log threats
+    // Audit log threats and record in browsable block history
     for (const t of threats) {
+      const reason = t.type === "phishing" ? "phishing"
+        : t.type === "cryptojacking" ? "mining"
+        : t.type === "blocklist" ? "blocklist"
+        : "malware";
+
+      recordHistory("blocked", details.url, {
+        message: t.message,
+        severity: t.severity || "high",
+        reason,
+      });
+
       if (t.type === "phishing") {
         sendAuditLog("extension.phishing_detected", {
           url: details.url,
@@ -591,6 +603,16 @@ chrome.webRequest.onBeforeRequest.addListener(
 
       console.log("[TrueProtect] Mining script detected:", details.url);
 
+      recordHistory("blocked", details.url, {
+        message: "Cryptocurrency mining script blocked",
+        severity: "high",
+        reason: "mining",
+      });
+      sendAuditLog("extension.mining_blocked", {
+        url: details.url,
+        message: "Mining script blocked (sub-resource)",
+      });
+
       // Notify content script
       if (details.tabId > 0) {
         chrome.tabs.sendMessage(details.tabId, {
@@ -605,6 +627,18 @@ chrome.webRequest.onBeforeRequest.addListener(
       stats.threatsBlocked++;
       saveStats();
       updateBadge();
+
+      recordHistory("blocked", details.url, {
+        message: "URL on threat blocklist",
+        severity: "high",
+        reason: "blocklist",
+      });
+      sendAuditLog("extension.threat_blocked", {
+        url: details.url,
+        threatType: "blocklist",
+        severity: "high",
+        message: "Sub-resource blocked (strict mode)",
+      });
     }
   },
   { urls: ["<all_urls>"] }
@@ -661,6 +695,20 @@ chrome.downloads?.onCreated?.addListener(async (downloadItem) => {
       stats.threatsBlocked++;
       await saveStats();
       updateBadge();
+
+      recordHistory("blocked", url, {
+        title: downloadItem.filename || "",
+        message: `Dangerous download blocked: ${threats[0].message}`,
+        severity: "high",
+        reason: "download",
+      });
+      sendAuditLog("extension.threat_blocked", {
+        url,
+        threatType: "download",
+        severity: "high",
+        message: threats[0].message,
+        filename: downloadItem.filename || "",
+      });
 
       const prefs = (await chrome.storage.local.get("notification_prefs")).notification_prefs || {};
       if (prefs.showDownload !== false) {
@@ -1021,6 +1069,18 @@ async function handleMessage(message, sender) {
 
         stats.threatsBlocked += message.threats.length;
         message.threats.forEach((t) => {
+          const reason = t.type === "phishing" ? "phishing"
+            : t.type === "cryptojacking" ? "mining"
+            : t.type === "blocklist" ? "blocklist"
+            : "malware";
+
+          recordHistory("blocked", sender.tab.url, {
+            title: sender.tab.title || "",
+            message: t.message,
+            severity: t.severity || "high",
+            reason,
+          });
+
           if (t.type === "phishing") {
             stats.phishingDetected++;
             sendAuditLog("extension.phishing_detected", {
@@ -1141,12 +1201,16 @@ async function handleMessage(message, sender) {
     }
 
     case "GET_HISTORY": {
-      const filter = message.filter || "all"; // "all", "scans", "threats"
+      const filter = message.filter || "all"; // "all", "scans", "threats", "blocked", "phishing"
       let history = [...scanHistory];
       if (filter === "scans") {
         history = history.filter((h) => h.type === "scan");
       } else if (filter === "threats") {
         history = history.filter((h) => h.type !== "scan");
+      } else if (filter === "blocked") {
+        history = history.filter((h) => h.type === "blocked");
+      } else if (filter === "phishing") {
+        history = history.filter((h) => h.type === "blocked" && h.reason === "phishing");
       }
       return { history: history.slice(0, message.limit || 100) };
     }

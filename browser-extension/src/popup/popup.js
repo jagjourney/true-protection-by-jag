@@ -416,8 +416,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function openHistory(filter) {
     currentHistoryFilter = filter;
+    // "phishing" is a virtual filter with no tab - highlight "blocked" instead
+    const activeTab = filter === "phishing" ? "blocked" : filter;
     historyTabs.forEach((t) => {
-      t.classList.toggle("active", t.dataset.filter === filter);
+      t.classList.toggle("active", t.dataset.filter === activeTab);
     });
     statsSection.classList.add("hidden");
     historySection.classList.remove("hidden");
@@ -452,16 +454,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     entries.forEach((entry) => {
       const item = document.createElement("div");
       item.className = "history-item";
-      if (entry.type !== "scan") item.classList.add("history-threat");
+      if (entry.type === "blocked") item.classList.add("history-blocked");
+      else if (entry.type !== "scan") item.classList.add("history-threat");
 
       const dot = document.createElement("span");
       dot.className = "history-dot";
       if (entry.type === "scan") dot.classList.add("dot-safe");
-      else if (entry.severity === "high") dot.classList.add("dot-danger");
+      else if (entry.type === "blocked" || entry.severity === "high") dot.classList.add("dot-danger");
       else dot.classList.add("dot-warning");
 
       const info = document.createElement("div");
       info.className = "history-info";
+
+      // Top row: URL + reason badge (for blocked entries)
+      const topRow = document.createElement("div");
+      topRow.className = "history-top-row";
 
       const urlEl = document.createElement("span");
       urlEl.className = "history-url";
@@ -472,23 +479,45 @@ document.addEventListener("DOMContentLoaded", async () => {
         urlEl.textContent = entry.url?.slice(0, 50) || "Unknown";
       }
       urlEl.title = entry.url;
+      topRow.appendChild(urlEl);
+
+      if (entry.type === "blocked" && entry.reason) {
+        const badge = document.createElement("span");
+        badge.className = "history-reason reason-" + entry.reason;
+        badge.textContent = reasonLabel(entry.reason);
+        topRow.appendChild(badge);
+      }
 
       const meta = document.createElement("span");
       meta.className = "history-meta";
       const ago = formatTimeAgo(entry.timestamp);
       if (entry.type === "scan") {
         meta.textContent = ago;
+      } else if (entry.type === "blocked") {
+        meta.textContent = (entry.message || "Blocked") + " - " + ago;
       } else {
         meta.textContent = (entry.message || entry.type) + " - " + ago;
       }
 
-      info.appendChild(urlEl);
+      info.appendChild(topRow);
       info.appendChild(meta);
 
       item.appendChild(dot);
       item.appendChild(info);
       historyList.appendChild(item);
     });
+  }
+
+  function reasonLabel(reason) {
+    const labels = {
+      phishing: "Phishing",
+      malware: "Malware",
+      mining: "Mining",
+      blocklist: "Blocklist",
+      custom: "Custom",
+      download: "Download",
+    };
+    return labels[reason] || reason;
   }
 
   function formatTimeAgo(ts) {

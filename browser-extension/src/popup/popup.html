@@ -97,12 +97,12 @@
         <span class="stat-label">Pages Scanned</span>
       </div>
       <div class="stat-divider"></div>
-      <div class="stat-item" data-filter="threats">
+      <div class="stat-item" data-filter="blocked">
         <span class="stat-value" id="stat-blocked">0</span>
         <span class="stat-label">Threats Blocked</span>
       </div>
       <div class="stat-divider"></div>
-      <div class="stat-item" data-filter="threats">
+      <div class="stat-item" data-filter="phishing">
         <span class="stat-value" id="stat-phishing">0</span>
         <span class="stat-label">Phishing</span>
       </div>
@@ -114,6 +114,7 @@
         <div class="history-tabs">
           <button class="history-tab active" data-filter="all" id="tab-all">All</button>
           <button class="history-tab" data-filter="scans" id="tab-scans">Scans</button>
+          <button class="history-tab" data-filter="blocked" id="tab-blocked">Blocked</button>
           <button class="history-tab" data-filter="threats" id="tab-threats">Threats</button>
         </div>
         <button class="history-close" id="history-close" title="Close history">

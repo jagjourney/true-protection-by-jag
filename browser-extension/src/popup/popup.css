@@ -812,6 +812,65 @@ body {
   color: var(--color-warning);
 }
 
+.history-blocked .history-url {
+  color: var(--color-danger);
+  font-weight: 500;
+}
+
+.history-top-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.history-top-row .history-url {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-reason {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.reason-phishing {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.reason-malware {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.reason-mining {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.reason-blocklist {
+  background: var(--color-info-bg);
+  color: var(--color-info);
+}
+
+.reason-custom {
+  background: var(--color-info-bg);
+  color: var(--color-info);
+}
+
+.reason-download {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
 .history-empty {
   text-align: center;
   padding: 20px 8px;
