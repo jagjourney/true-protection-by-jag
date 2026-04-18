@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "True Protection by Jag",
   "short_name": "TrueProtect",
-  "version": "1.2.33",
+  "version": "1.2.34",
   "description": "Real-time web protection powered by JagAI. Blocks phishing, malware, cryptojacking, and other online threats.",
   "author": "Jag Journey, LLC",
   "homepage_url": "https://tpjsecurity.com",
