@@ -2,11 +2,10 @@
   "manifest_version": 3,
   "name": "True Protection by Jag",
   "short_name": "TrueProtect",
-  "version": "1.2.46",
+  "version": "1.2.52",
   "description": "Real-time web protection powered by JagAI. Blocks phishing, malware, cryptojacking, and other online threats.",
   "author": "Jag Journey, LLC",
   "homepage_url": "https://tpjsecurity.com",
-
   "permissions": [
     "webRequest",
     "storage",
@@ -22,25 +21,25 @@
     "declarativeNetRequest",
     "declarativeNetRequestWithHostAccess"
   ],
-
   "host_permissions": [
     "<all_urls>"
   ],
-
   "background": {
     "service_worker": "src/background/service-worker.js",
     "type": "module"
   },
-
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["src/content/page-scanner.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "src/content/page-scanner.js"
+      ],
       "run_at": "document_idle",
       "all_frames": true
     }
   ],
-
   "action": {
     "default_popup": "src/popup/popup.html",
     "default_icon": {
@@ -51,19 +50,16 @@
     },
     "default_title": "True Protection by Jag"
   },
-
   "options_ui": {
     "page": "src/options/options.html",
     "open_in_tab": true
   },
-
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-
   "declarative_net_request": {
     "rule_resources": [
       {
@@ -73,16 +69,17 @@
       }
     ]
   },
-
   "web_accessible_resources": [
     {
-      "resources": ["icons/*"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "icons/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ],
-
   "minimum_chrome_version": "102",
-
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
   }
