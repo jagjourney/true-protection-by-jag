@@ -198,7 +198,7 @@ tpj config --get scanner.realtime_enabled
 tpj config --set scanner.max_file_size_mb --value 1024
 ```
 
-Or edit the configuration file directly. See the [Configuration Reference](../admin-guide/configuration.md) for the full list of options.
+Or edit the configuration file directly. See the [Configuration Reference](../../04-reference/configuration.md) for the full list of options.
 
 ### Configuration File Locations
 
@@ -389,5 +389,5 @@ Or run the uninstaller at `/Library/Application Support/TrueProtection/Uninstall
 - [Scanning Guide](scanning.md) - Deep dive into scan types, scheduling, and results
 - [Firewall Configuration](firewall.md) - Set up rules, application control, and geo-blocking
 - [JagAI Module](jagai-module.md) - Explore AI-powered threat analysis
-- [CLI Reference](../admin-guide/cli-reference.md) - Complete command reference
-- [Configuration Reference](../admin-guide/configuration.md) - All configuration options explained
+- [CLI Reference](../../04-reference/cli-reference.md) - Complete command reference
+- [Configuration Reference](../../04-reference/configuration.md) - All configuration options explained

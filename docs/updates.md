@@ -292,7 +292,7 @@ For systems without internet access:
 
 2. **Manual transfer.** Download packages on a connected machine and transfer them via USB or internal network.
 
-3. **Enterprise deployment.** Use SCCM, Ansible, or other deployment tools to push updates. See the [Deployment Guide](../admin-guide/deployment.md).
+3. **Enterprise deployment.** Use SCCM, Ansible, or other deployment tools to push updates. See the [Deployment Guide](../../03-operations/admin-guide/deployment.md).
 
 ---
 
