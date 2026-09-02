@@ -138,7 +138,7 @@ tpj firewall delete <RULE_ID>
 tpj firewall toggle on
 ```
 
-Rules are INetFw / Windows Firewall, not WFP. Defaults stay at Ask until you opt into Allow or Block. See [Firewall](firewall.md).
+Rules are INetFw / Windows Firewall, not WFP. Defaults stay at Ask until you opt into Allow or Block. DNS and DHCP appear as daemon catalog keys (`dns`, `dhcp`), not as a DNS or DHCP server product. There is no Mail Security, anti-spam, or WAF/ModSecurity module. See [Firewall](firewall.md).
 
 ---
 

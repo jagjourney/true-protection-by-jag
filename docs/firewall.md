@@ -92,7 +92,7 @@ tpj firewall list
 
 Columns: ID, NAME, ACTION, DIR, PROTO, ENABLED.
 
-Default seed IDs look like `dns`, `http`, `https`, `dhcp`. User-added IDs are `user-` plus the rule name. Copy the ID from this table for `delete`.
+Default seed IDs look like `dns`, `http`, `https`, `dhcp`. Those are ordinary INetFw catalog keys in the daemon (Allow DNS UDP 53, Allow HTTP TCP 80, Allow HTTPS TCP 443, Allow DHCP UDP 67-68). They are not a DNS or DHCP server product. User-added IDs are `user-` plus the rule name. Copy the ID from this table for `delete`.
 
 ### tpj firewall add
 
@@ -152,7 +152,7 @@ Removes every `TPJ_*` rule from Windows Firewall. Custom rules you created in Wi
 
 ## Suggested rules
 
-The Firewall page lists optional one-click rules (block inbound RDP, block Telnet, block outbound SMB, and similar). Each toggle adds or removes a named rule in the daemon. They are ordinary INetFw rules when OS-sync is on, not kernel-driver rules.
+The Firewall page lists optional one-click rules (block inbound RDP, block Telnet, block outbound SMB, and similar). Each toggle adds or removes a named rule in the daemon. They are ordinary INetFw rules when OS-sync is on, not kernel-driver rules. There is no visual-editor template library in this MSI, and there is no Mail Security, anti-spam, or WAF/ModSecurity template.
 
 ---
 
