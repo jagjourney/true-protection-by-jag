@@ -1,6 +1,6 @@
 # Understanding the Dashboard and Protection Status
 
-True Protection by Jag provides a real-time view of your system's security posture through the desktop GUI, web console, and CLI status output. This guide explains every indicator, what the protection states mean, and how to interpret the information presented.
+True Protection by Jag provides a real-time view of your system's security posture through the Qt desktop GUI and CLI status output. This guide explains every indicator, what the protection states mean, and how to interpret the information presented.
 
 ---
 
@@ -10,7 +10,7 @@ True Protection by Jag provides a real-time view of your system's security postu
 - [Protection Status Overview](#protection-status-overview)
 - [Component Status Indicators](#component-status-indicators)
 - [The Desktop Dashboard (Qt GUI)](#the-desktop-dashboard-qt-gui)
-- [The Web Console](#the-web-console)
+- [Local web console](#local-web-console)
 - [Event Feed and Notifications](#event-feed-and-notifications)
 - [Understanding Threat Levels](#understanding-threat-levels)
 - [System Tray / Menu Bar Icon](#system-tray--menu-bar-icon)
@@ -195,21 +195,9 @@ A chronological feed of recent events:
 
 ---
 
-## The Web Console
+## Local web console
 
-For Linux servers and headless deployments, the web console provides the same dashboard in a browser at `http://localhost:9876` (default).
-
-Access the web console:
-
-```bash
-# The web console starts with the daemon on Linux Server installations
-# Default: http://localhost:9876
-
-# To change the bind address (for remote access):
-tpj config --set web_console.bind --value "0.0.0.0:9876"
-```
-
-**Security note:** If you expose the web console beyond localhost, always use a reverse proxy with TLS and authentication. The web console uses token-based authentication for remote access.
+There is no local web console in the current Windows build. The daemon does not listen on `http://localhost:9876` (or any other documented port). Use the Qt GUI or `tpj status`.
 
 ---
 
