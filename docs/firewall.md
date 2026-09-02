@@ -2,6 +2,8 @@
 
 The current Windows MSI manages **Windows Firewall** in user mode through INetFw. You work with it in the Qt **Firewall** page or with the `tpj firewall` CLI. There is no WFP callout, eBPF backend, macOS Network Extension, or deep packet inspection in this build.
 
+Linux pipeline DEB and RPM packages use the same `tpj firewall` CLI. The daemon programs **nftables**. That is not INetFw, not eBPF, and Linux is not a Supported launch platform. On a host without Qt, the CLI is the UI.
+
 The daemon (`TpjDaemon`) holds the rule list. When the default policy is **Allow** or **Block**, matching rules are written to Windows Firewall as `TPJ_*` rules. When both directions are **Ask** (the default), True Protection evaluates rules in-engine only and does **not** program Windows Firewall until you change policy or approve a decision.
 
 ---
