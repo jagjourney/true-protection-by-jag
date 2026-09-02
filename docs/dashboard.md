@@ -10,7 +10,7 @@ True Protection by Jag provides a real-time view of your system's security postu
 - [Protection Status Overview](#protection-status-overview)
 - [Component Status Indicators](#component-status-indicators)
 - [The Desktop Dashboard (Qt GUI)](#the-desktop-dashboard-qt-gui)
-- [Local web console](#local-web-console)
+- [Headless hosts](#headless-hosts)
 - [Event Feed and Notifications](#event-feed-and-notifications)
 - [Understanding Threat Levels](#understanding-threat-levels)
 - [System Tray / Menu Bar Icon](#system-tray--menu-bar-icon)
@@ -195,9 +195,12 @@ A chronological feed of recent events:
 
 ---
 
-## Local web console
+## Headless hosts
 
-There is no local web console in the current Windows build. The daemon does not listen on `http://localhost:9876` (or any other documented port). Use the Qt GUI or `tpj status`.
+If this computer has no desktop session (Windows Server Core, Linux without a GUI), there is no dashboard window and no local web console. Use `tpj status` and `tpj diagnose`.
+
+- Windows Server: [windows-server.md](../../03-operations/admin-guide/windows-server.md)
+- Linux servers: [server-hardening.md](../../03-operations/admin-guide/server-hardening.md)
 
 ---
 
